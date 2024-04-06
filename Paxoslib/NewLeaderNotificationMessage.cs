@@ -8,15 +8,12 @@ namespace Paxos
   
     public class NewLeaderNotificationMessage : Message
     {
-        public int num {  get; set; }
+        public int Num {  get; set; }
         public NewLeaderNotificationMessage(int num)
         {
-            this.num = num;
+            this.Num = num;
           
         }
-        public int getNum()
-        {
-            return num;
-        }
+       
     }
 }

@@ -153,7 +153,7 @@
         { 
                 writeDebug("Starting node " + n); 
                 foreach(var node in nodes) 
-                        if(node.GetLocationData().getNum() == n) 
+                        if(node.GetLocationData().Num == n) 
                         { 
                                 node.Start(); 
                                 break; 
@@ -177,7 +177,7 @@
         { 
                 writeDebug("Stopping node " + n); 
                 foreach(var node in nodes) 
-                        if(node.GetLocationData().getNum() == n) 
+                        if(node.GetLocationData().Num == n) 
                         { 
                                 node.Stop(); 
                                 break; 
@@ -191,6 +191,8 @@
                 for(int i = 0; i < n; i++) 
                 { 
                         var node = new Node<string>(i);
+                node.NodeName = "jin" + i.ToString();
+                node.OnLeaderChange += Node_OnLeaderChange;
                 //if (i == 0 || i == 1) // make 0 leader 
                 //    node.BecomeLeader();
                 nodes.Add(node); 
@@ -202,8 +204,14 @@
                         node.SetNodeList(nodeLocations); 
                  
                 writeDebug(n + " nodes created"); 
-        } 
+        }
+
+        private static void Node_OnLeaderChange(int arg1, string arg2, bool arg3)
+        {
          
+            Console.WriteLine($"num:{arg1},name:{arg2},isleader:{arg3}");
+        }
+
         private static void clearStableStorage() 
         { 
                 foreach(var node in nodes) 
@@ -214,19 +222,19 @@
         private static void printAll() 
         { 
                 foreach(var node in nodes) 
-                        print(node.GetLocationData().getNum()); 
+                        print(node.GetLocationData().Num); 
         } 
          
         private static void print(int n) 
         {
             foreach (var node in nodes)
             {
-                if (node.GetLocationData().getNum() == n)
+                if (node.GetLocationData().Num == n)
                 {
 
                     IEnumerable<string> values = node.Values();
 
-                    String m = "List of values learned by " + node.GetLocationData().getNum() + ": ";
+                    String m = "List of values learned by " + node.GetLocationData().Num + ": ";
                     foreach (string vlu in values)
                     {
                         m += "\n\t" + vlu;

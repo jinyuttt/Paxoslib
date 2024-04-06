@@ -5,54 +5,35 @@
 
     public class NodeLocation 
     {  
-        public String host {  get; set; }
-        public int port {  get; set; }
+        public String Host {  get; set; }
+        public int Port {  get; set; }
 
-        public int num {  get; set; }
-        public bool isLeader {get;set;}    
+        public int Num {  get; set; }
+        public bool IsLeader {get;set;}    
 
-        public NodeLocation()
-        {
-
-        }
+       public string NodeName {  get; set; }    
         
         public NodeLocation(String host, int port, int num)  
         {  
-            this.host = host;  
-            this.port = port;  
-            this.num = num;  
-            this.isLeader = false;  
+            this.Host = host;  
+            this.Port = port;  
+            this.Num = num;  
+            this.IsLeader = false;  
         }    
         
         public void becomeLeader()  
         {  
-            isLeader = true;  
+            IsLeader = true;  
         }    
         
-        public void becomeNonLeader()  
+        public void BecomeNonLeader()  
         {  
-            isLeader = false;  
+            IsLeader = false;  
         }    
-        
-        
-        public String getHost()  
+       
+        public override string ToString()  
         {  
-            return host;  
-        }    
-        
-        public int getPort()  
-        {  
-            return port;  
-        }    
-        
-        public int getNum()  
-        {  
-            return num;  
-        }    
-        
-        public override String ToString()  
-        {  
-            return num.ToString();  
+            return Num.ToString();  
         }  
     }  
 }

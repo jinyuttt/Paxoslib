@@ -3,17 +3,14 @@
 
     public class AcceptRequestMessage<TValue> : Message
     {
-        public Proposal<TValue> proposal {  get; set; }
+        public Proposal<TValue> Proposal {  get; set; }
         
         public AcceptRequestMessage(Proposal<TValue> proposal)
         {
-            this.proposal = proposal;
+            this.Proposal = proposal;
           
         }
 
-        public Proposal<TValue> getProposal()
-        {
-            return proposal;
-        }
+
     }
 }

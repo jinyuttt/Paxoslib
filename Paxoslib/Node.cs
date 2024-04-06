@@ -52,6 +52,15 @@ namespace Paxos
         private Dictionary<int, int> _numAcceptNotifications;
         private Dictionary<int, TValue> _chosenValues;
 
+        private string name;
+        public string NodeName 
+        {
+            get { return name; } 
+            set { name = value; this._location.NodeName = value; }
+        }
+           
+        public event Action<int,string,bool> OnLeaderChange;
+
         public Node(String host, int port, int psnSeed)
         {
             this.psn = psnSeed;
@@ -80,9 +89,9 @@ namespace Paxos
         {
         }
 
-        public void SetNodeList(HashSet<NodeLocation> s)
+        public void SetNodeList(HashSet<NodeLocation> nodes)
         {
-            this._nodes = s;
+            this._nodes = nodes;
         }
 
         /// <summary>
@@ -91,12 +100,19 @@ namespace Paxos
         public void BecomeLeader()
         {
             Utility.WriteDebug("I'm Leader");
-            //Console.WriteLine("I'm Leader");
+            
             _location.becomeLeader();
            
             foreach (NodeLocation node in this._nodes)
             {
-                node.becomeNonLeader();
+                node.BecomeNonLeader();
+                if(node.IsLeader)
+                {
+                    if(OnLeaderChange != null)
+                    {
+                        OnLeaderChange(node.Num, node.NodeName, false);
+                    }
+                }
             }
 
             // fill skipped slots                  
@@ -119,8 +135,12 @@ namespace Paxos
 
                 foreach (int i in proposeBuffer)
                 {
-                    Propose(default(TValue), proposeBuffer[i]);
+                    Propose(default, proposeBuffer[i]);
                 }
+            }
+            if(OnLeaderChange != null)
+            {
+                OnLeaderChange(psn, NodeName,true);
             }
         }
 
@@ -134,9 +154,9 @@ namespace Paxos
             // find old leader and calculate new leader num                  
             foreach (NodeLocation node in _nodes)
             {
-                if (node.isLeader)
+                if (node.IsLeader)
                 {
-                    newNum = (node.getNum() + 1) % _nodes.Count();
+                    newNum = (node.Num + 1) % _nodes.Count();
                     break;
                 }
             }
@@ -181,7 +201,7 @@ namespace Paxos
                     }
                     HeartbeatObserver nodeHeartbeatObserver = new HeartbeatObserver(this.ElectNewLeader, node);
                     nodeHeartbeatObserver.start();
-                    _heartbeatObservers[node.getNum()] = nodeHeartbeatObserver;
+                    _heartbeatObservers[node.Num] = nodeHeartbeatObserver;
                 }
                 isRunning = true;
                 Utility.WriteDebug("Started");
@@ -278,7 +298,7 @@ namespace Paxos
             try
             {
                 
-                if(destinationNode.getHost==null)
+                if(destinationNode.Host==null)
                 {
                     Utility.WriteDebug("destinationNode host null " , true);
                 }
@@ -288,14 +308,14 @@ namespace Paxos
 
                 try
                 {
-                    targetIP = (from address in Dns.GetHostEntry(destinationNode.getHost()).AddressList where address.AddressFamily == AddressFamily.InterNetwork select address).First();
+                    targetIP = (from address in Dns.GetHostEntry(destinationNode.Host).AddressList where address.AddressFamily == AddressFamily.InterNetwork select address).First();
                 }
                 catch
                 {
 
                     Utility.WriteDebug("destinationNode host null ", true);
                 }
-                    IPEndPoint ep = new IPEndPoint(targetIP, destinationNode.getPort());
+                IPEndPoint ep = new IPEndPoint(targetIP, destinationNode.Port);
                     using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
                     {
                         socket.SendTimeout = Node<TValue>.SOCKET_TIMEOUT;
@@ -319,9 +339,9 @@ namespace Paxos
             }
             catch (SocketException e)
             {
-                Utility.WriteDebug("Detected crash from " + destinationNode.getNum(), true);
+                Utility.WriteDebug("Detected crash from " + destinationNode.Num, true);
                 // if was leader, elect a new one and try THIS retransmission again, else, do nothing                          
-                if (destinationNode.isLeader && !(m is NewLeaderNotificationMessage))
+                if (destinationNode.IsLeader && !(m is NewLeaderNotificationMessage))
                 {
                     ElectNewLeader();
                 }
@@ -352,7 +372,7 @@ namespace Paxos
                         return;
                     try
                     {
-                        _heartbeatObservers[m.Sender.getNum()].ResetTimeout();
+                        _heartbeatObservers[m.Sender.Num].ResetTimeout();
                     }
                     catch { }
                 
@@ -361,8 +381,8 @@ namespace Paxos
                 // Acceptor                  
                 {
                     PrepareRequestMessage prepareRequest = (PrepareRequestMessage)m;
-                    int csn = prepareRequest.getCsn();
-                    int psn = prepareRequest.getPsn();
+                    int csn = prepareRequest.Csn;
+                    int psn = prepareRequest.Psn;
                     if (currentCsn <= csn)
                         currentCsn = csn + 1;
                     Utility.WriteDebug("Got Prepare Request from " + prepareRequest.Sender + ": (" + csn + ", " + psn + ")");
@@ -381,9 +401,9 @@ namespace Paxos
                 // Proposer                  
                 {
                     PrepareResponseMessage<TValue> prepareResponse = (PrepareResponseMessage<TValue>)m;
-                    Proposal<TValue> acceptedProposal = prepareResponse.getProposal();
-                    int csn = prepareResponse.getCsn();
-                    int minPsn = prepareResponse.getMinPsn();
+                    Proposal<TValue> acceptedProposal = prepareResponse.Proposal;
+                    int csn = prepareResponse.Csn;
+                    int minPsn = prepareResponse.MinPsn;
                     Proposal<TValue> proposal = proposals[csn];
                     if (currentCsn <= csn)
                         currentCsn = csn + 1;
@@ -392,14 +412,14 @@ namespace Paxos
                         // ignore if already heard from a majority                                  
                         return;
                     // if acceptors already accepted something higher, use it instead                          
-                    if (acceptedProposal != null && acceptedProposal.getPsn() > proposal.getPsn())
+                    if (acceptedProposal != null && acceptedProposal.Psn > proposal.Psn)
                         proposal = acceptedProposal;
                     // if acceptors already promised something higher, use higher psn                          
-                    if (minPsn > proposal.getPsn())
+                    if (minPsn > proposal.Psn)
                     {
-                        while (psn < prepareResponse.getMinPsn())
+                        while (psn < prepareResponse.MinPsn)
                             psn += _nodes.Count;
-                        Propose(proposal.getValue(), proposal.getCsn());
+                        Propose(proposal.Value, proposal.Csn);
                         return;
                     }
                     int n = numAcceptRequests[csn];
@@ -423,9 +443,9 @@ namespace Paxos
                 else if (m is AcceptRequestMessage<TValue>) // Acceptor                  
                 {
                     AcceptRequestMessage<TValue> acceptRequest = (AcceptRequestMessage<TValue>)m;
-                    Proposal<TValue> requestedProposal = acceptRequest.getProposal();
-                    int csn = requestedProposal.getCsn();
-                    int psn = requestedProposal.getPsn();
+                    Proposal<TValue> requestedProposal = acceptRequest.Proposal;
+                    int csn = requestedProposal.Csn;
+                    int psn = requestedProposal.Psn;
                     if (currentCsn <= csn)
                         currentCsn = csn + 1;
                     Utility.WriteDebug("Got Accept Request from " + acceptRequest.Sender + ": " + requestedProposal.toString());
@@ -441,7 +461,7 @@ namespace Paxos
 
                     // Notify Learners                          
                     AcceptNotificationMessage<TValue> acceptNotification = new AcceptNotificationMessage<TValue>(requestedProposal);
-                    acceptNotification.Test = 77;
+                 
                 
                     Broadcast(acceptNotification);
                     UpdateStableStorage();
@@ -451,7 +471,7 @@ namespace Paxos
                 {
                     AcceptNotificationMessage<TValue> acceptNotification = (AcceptNotificationMessage<TValue>) m;
                     Proposal<TValue> acceptedProposal = acceptNotification.Proposal;
-                    int csn = acceptedProposal.getCsn();
+                    int csn = acceptedProposal.Csn;
                     if (currentCsn <= csn)
                         currentCsn = csn + 1;
                     Utility.WriteDebug("Got Accept Notification from " + acceptNotification.Sender + ": " + (acceptedProposal == null ? "None" : acceptedProposal.toString()));
@@ -467,8 +487,8 @@ namespace Paxos
                     if (n > (_nodes.Count / 2)) // has heard from majority?                          
                     {
                         _numAcceptNotifications.Remove(csn);
-                        _chosenValues[csn] = acceptedProposal.getValue();
-                        Utility.WriteDebug("Learned: " + acceptedProposal.getCsn() + ", " + acceptedProposal.getValue());
+                        _chosenValues[csn] = acceptedProposal.Value;
+                        Utility.WriteDebug("Learned: " + acceptedProposal.Csn + ", " + acceptedProposal.Value);
                         UpdateStableStorage();
                     }
                     else
@@ -477,17 +497,17 @@ namespace Paxos
                 else if (m is NewLeaderNotificationMessage) // Leader Election                  
                 {
                     NewLeaderNotificationMessage newLeaderNotification = (NewLeaderNotificationMessage)m;
-                    int newNum = newLeaderNotification.getNum();
+                    int newNum = newLeaderNotification.Num;
                     Utility.WriteDebug("Got New Leader Notification from " + newLeaderNotification.Sender + ": " + newNum);
                     // am i new leader?                          
-                    if (_location.getNum() == newNum)
+                    if (_location.Num == newNum)
                         BecomeLeader();
                     // find new leader, make others non-leaders                          
                     foreach (NodeLocation node in _nodes)
-                        if (node.getNum() == newNum)
+                        if (node.Num == newNum)
                             node.becomeLeader();
                         else
-                            node.becomeNonLeader();
+                            node.BecomeNonLeader();
                 }
                 else
                     Utility.WriteDebug("Unknown Message recieved", true);
@@ -501,7 +521,7 @@ namespace Paxos
 
         public bool IsLeader()
         {
-            return _location.isLeader;
+            return _location.IsLeader;
         }
 
         public override String ToString()
@@ -533,12 +553,12 @@ namespace Paxos
 
                     }
 
-                    minPsns = stableStorage.minPsns;
+                    minPsns = stableStorage.MinPsns;
                     if (minPsns == null)
                     {
                         minPsns = new Dictionary<int, int>();
                     }
-                    maxAcceptedProposals = stableStorage.maxAcceptedProposals;
+                    maxAcceptedProposals = stableStorage.MaxAcceptedProposals;
                     if(maxAcceptedProposals == null)
                     {
                         maxAcceptedProposals=new Dictionary<int, Proposal<TValue>>();
@@ -560,8 +580,8 @@ namespace Paxos
             lock (_nodeLock)
             {
                 NodeStableStorage<TValue> stableStorage = new NodeStableStorage<TValue>();
-                stableStorage.minPsns = minPsns;
-                stableStorage.maxAcceptedProposals = maxAcceptedProposals;
+                stableStorage.MinPsns = minPsns;
+                stableStorage.MaxAcceptedProposals = maxAcceptedProposals;
                 Stream outputStream = null;
 
                 try
@@ -672,9 +692,9 @@ namespace Paxos
                 {
                     if (HEARTBEAT_TIMEOUT < Utility.CurrentTimeMilliseconds() - _lastHeartbeatTimestamp)
                     {
-                        Utility.WriteDebug("Detected crash from " + _nodeLocationData.getNum() + " (heartbeat)", true);
+                        Utility.WriteDebug("Detected crash from " + _nodeLocationData.Num + " (heartbeat)", true);
                         // if was leader, elect a new one                                          
-                        if (_nodeLocationData.isLeader)
+                        if (_nodeLocationData.IsLeader)
                             this._electNewLeader();
                         _lastHeartbeatTimestamp = Utility.CurrentTimeMilliseconds();
                     }
@@ -704,7 +724,7 @@ namespace Paxos
                 {
                     _serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                     IPAddress hostIP = IPAddress.Any;
-                    IPEndPoint ep = new IPEndPoint(hostIP, location.getPort());
+                    IPEndPoint ep = new IPEndPoint(hostIP, location.Port);
                     _serverSocket.Bind(ep);
                     // TODO: Set a sensible backlog queue length
                     _serverSocket.Listen(1000);
@@ -797,7 +817,7 @@ namespace Paxos
                 {
                     if (expireTime < Utility.CurrentTimeMilliseconds())
                     {
-                        this._propose(proposal.getValue(), proposal.getCsn());
+                        this._propose(proposal.Value, proposal.Csn);
                         this.Kill();
                     }
                     yield();

@@ -5,7 +5,7 @@
 
     public class NodeStableStorage<TValue> 
     {  
-        public Dictionary<int, int> minPsns;  
-        public Dictionary<int, Proposal<TValue>> maxAcceptedProposals;    
+        public Dictionary<int, int> MinPsns { get;set; }
+        public Dictionary<int, Proposal<TValue>> MaxAcceptedProposals {  get;set; }  
     }  
 }
